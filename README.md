@@ -1,4 +1,8 @@
 # 🐍 Multi-Agent Snake AI – NetLogo
+
+<!-- tags:start -->
+![NetLogo](https://img.shields.io/badge/NetLogo-3A6EA5) ![AI](https://img.shields.io/badge/AI-2F6F8F) ![Pathfinding](https://img.shields.io/badge/Pathfinding-2F6F8F) ![Search Algorithms](https://img.shields.io/badge/Search%20Algorithms-2F6F8F) ![University of Lincoln: CMP2020 Artificial Intelligence](https://img.shields.io/badge/University%20of%20Lincoln-CMP2020%20Artificial%20Intelligence-8A1538)
+<!-- tags:end -->
 This project explores autonomous agent control in a multi-player Snake game using classical AI search techniques. Each snake operates in a fully observable environment, navigating toward food while avoiding collisions with walls, other snakes, and itself.
 
 ✅ Core Features:
