@@ -15,6 +15,17 @@ This project explores autonomous agent control in a multi-player Snake game usin
 - 3D Visual Mode: A custom rendering layer that adds a 3D-like perspective to the game grid (Stored on seperate branch)
 - Map Selection: Interface for choosing from a set of predefined maps to alter the game environment
 
+## ▶️ Play in your browser
+
+**[snake.alexxdickinson.co.uk](https://snake.alexxdickinson.co.uk)** runs the 2D version in the browser with NetLogo Web: pick a map and a search algorithm for each snake, press **setup**, then **go**.
+
+The browser version is `SnakeAI-web.nlogo`. It's the same model, except the maps are built in code instead of loaded from `maps/*.csv`, because NetLogo Web can't read files from a folder.
+
+### Rebuilding and deploying the web version
+1. Go to [netlogoweb.org/launch](https://www.netlogoweb.org/launch) and upload `SnakeAI-web.nlogo` with the file picker at the top.
+2. Click **Export: HTML** and save it over `web/index.html`.
+3. Deploy with `npx wrangler deploy` (no build step). The site is set up in `wrangler.jsonc`.
+
 <img width="997" height="881" alt="image" src="https://github.com/user-attachments/assets/2f9769dd-83c9-4fcf-b9bd-384699da2ec4" />
 
 ![explorer_jak0J9m85j](https://github.com/user-attachments/assets/a4d0c62f-59d8-4c08-868e-19a668949961)

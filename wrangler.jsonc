@@ -1,0 +1,10 @@
+// Cloudflare Worker that serves the browser version at snake.alexxdickinson.co.uk
+// Deploy: npx wrangler deploy   (no build step: web/index.html is already built)
+// Custom domain: Workers & Pages > ai-snake > Settings > Domains & Routes > Add > Custom domain > snake.alexxdickinson.co.uk
+{
+  "name": "ai-snake",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "web"
+  }
+}
