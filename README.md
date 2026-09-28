@@ -21,6 +21,12 @@ This project explores autonomous agent control in a multi-player Snake game usin
 
 The browser version is `SnakeAI-web.nlogo`. It's the same model, except the maps are built in code instead of loaded from `maps/*.csv`, because NetLogo Web can't read files from a folder.
 
+The web version also fixes a few problems that showed up in the browser:
+- **Depth-first search** now backtracks properly. The original could plan a path that jumped to a patch that wasn't next to the snake (so it crashed), or loop forever when it boxed itself in.
+- **No more freezing:** "visited" is a mark on each patch instead of a search through a list, and path scores are stored in the queue instead of being recalculated on every comparison. The slowest tick went from about 3 seconds to under 0.1 s.
+- **Unreachable food** no longer breaks the greedy, uniform and A* searches (they used to run off the end of an empty queue).
+- **A safety check** before every move: the snake only follows its plan onto a clear patch next to it; otherwise it drops the plan and steps somewhere safe.
+
 ### Rebuilding and deploying the web version
 1. Go to [netlogoweb.org/launch](https://www.netlogoweb.org/launch) and upload `SnakeAI-web.nlogo` with the file picker at the top.
 2. Click **Export: HTML** and save it over `web/index.html`.

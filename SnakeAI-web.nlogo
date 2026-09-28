@@ -11,11 +11,13 @@ globals [
   wall-color
   clear-colors ; list of colors that patches the snakes can enter have
   apples; list of apples
+  search-count ; web version: id of the current path search (for fast 'visited' checks)
   level tool ; ignore these two variables they are here to prevent warnings when loading the world/map.
 ]
 
 patches-own [
   age ; if not part of a snake, age=-1. Otherwise age = ticks spent being a snake patch.
+  search-id ; web version: equals search-count if this patch was visited by the current search
 ]
 
 breed [snakes snake]
@@ -237,6 +239,21 @@ end
 
 ;;--------------------------------------------
 
+;;--------------------------------------------
+
+; Web version: take the next step of the planned path, but only if it's a clear patch
+; right next to the snake. Otherwise (no path found, or the path is out of date) forget
+; the plan and step onto a clear neighbouring patch instead of crashing.
+to follow-path ; turtle
+  ifelse not empty? path-to-food and member? (item 0 path-to-food) ([neighbors4] of patch-here) and member? [pcolor] of (item 0 path-to-food) clear-colors [
+    face item 0 path-to-food
+    set path-to-food butfirst path-to-food
+  ] [
+    set path-to-food []
+    face-random-neighboring-patch
+  ]
+end
+
 to-report will-collide
   foreach (range 0 carefullness)
   [ j ->
@@ -252,395 +269,177 @@ to-report will-collide
   report false
 end
 
-; Face the turtle according to the depth-first search algorithm
-to face-depth-first
-  let current-node patch-here
+;;--------------------------------------------
+; Web version of the searches. Same algorithms as the original, made faster so the
+; browser doesn't freeze: "visited" is a mark on each patch instead of a list search,
+; apple positions are read once per search, and path scores are stored in the queue
+; instead of being recalculated for every comparison.
 
+to start-search [node] ; turtle
+  set search-count search-count + 1
+  ask node [ set search-id search-count ]
+  set apples filter [a -> [pcolor] of a = green] apples
+end
+
+to mark-visited [node]
+  ask node [ set search-id search-count ]
+end
+
+to-report open-neighbors [node] ; clear neighbouring patches this search hasn't visited yet
+  report filter [n -> member? [pcolor] of n clear-colors and [search-id] of n != search-count] ([sort neighbors4] of node)
+end
+
+to-report needs-new-path ; turtle
   let next-blocked false ;This block allows the snake to recalculate the route to avoid players which may have since moved to block them
   if avoid-snakes [set next-blocked will-collide]
-
-  if empty? path-to-food or next-blocked
-  [
-    let visited lput current-node []
-    let current-neighbors []
-    let found-food false
-    set path-to-food []
-    let dir 0
-
-    while [not found-food] [
-      ifelse [pcolor] of current-node = green [
-        set found-food true
-      ]
-      [
-        ask current-node[
-          set current-neighbors sort neighbors4
-        ]
-
-        foreach (range 0 dir)
-        [
-          let temp last current-neighbors
-          set current-neighbors sublist current-neighbors 0 (length current-neighbors - 1)
-          set current-neighbors fput temp current-neighbors
-        ]
-
-
-        let free-neighbors filter [n -> member? [pcolor] of n clear-colors] current-neighbors
-        let unvisited-neighbors filter [n -> member? n visited = false] free-neighbors
-
-        if empty? unvisited-neighbors[ ;If the program boxes itself in
-          set visited sublist visited 0 (snake-age + 1)
-          set unvisited-neighbors filter [n -> member? n visited = false] free-neighbors
-          set path-to-food sublist path-to-food 0 2
-          set dir dir + 1
-          print dir
-        ]
-
-        ifelse not empty? unvisited-neighbors
-        [
-          let next-node item 0 unvisited-neighbors
-          set visited fput next-node visited
-          set path-to-food lput next-node path-to-food
-          set current-node next-node
-          if [pcolor] of next-node = green
-          [
-            set found-food true
-          ]
-        ]
-        [
-          ;If the program boxes itself in and cannot escape
-          set visited sublist visited 0 (snake-age + 1)
-          ;set path-to-food sublist path-to-food 0 (length path-to-food - 2) ;Go back in hopes to get a better route on chance
-          set path-to-food sublist path-to-food 0 1
-          set dir dir + 1
-          print dir
-          set current-node last path-to-food
-        ]
-      ]
-    ]
-  ]
-  if debug-paths [color-path []];function to color the future path of snake
-  face item 0 path-to-food
-  set path-to-food butfirst path-to-food
+  report empty? path-to-food or next-blocked
 end
 
 ;;--------------------------------------------
 
-;;;
+; Face the turtle according to the depth-first search algorithm
+; (a standard depth-first search with backtracking: the original could jump to a patch
+;  that wasn't next to the snake, or loop forever when it boxed itself in)
+to face-depth-first
+  if needs-new-path [
+    let start patch-here
+    start-search start
+    let visited (list start)
+    let current-node start
+    let found-food false
+    let stuck false
+    set path-to-food []
+
+    while [not found-food and not stuck] [
+      let options open-neighbors current-node
+      ifelse empty? options [
+        ; dead end: back up one step (or give up if we're back at the start)
+        ifelse empty? path-to-food [
+          set stuck true
+        ] [
+          set path-to-food but-last path-to-food
+          set current-node ifelse-value empty? path-to-food [start] [last path-to-food]
+        ]
+      ] [
+        let next-node first options
+        mark-visited next-node
+        set visited fput next-node visited
+        set path-to-food lput next-node path-to-food
+        set current-node next-node
+        if [pcolor] of next-node = green [ set found-food true ]
+      ]
+    ]
+    if debug-paths [color-path visited];function to color the future path of snake
+  ]
+  follow-path
+end
+
+;;--------------------------------------------
+
 ; Face the turtle according to the breadth-first search algorithm
 to face-breadth-first
-  let next-blocked false ;This block allows the snake to recalculate the route to avoid players which may have since moved to block them
-  if avoid-snakes [set next-blocked will-collide]
-
-  if empty? path-to-food or next-blocked
-  [
+  if needs-new-path [
     let current-node patch-here
-    let queue lput (list current-node) []
-    let visited lput current-node []
+    start-search current-node
+    let queue (list (list current-node))
+    let visited (list current-node)
     let found-food false
+    set path-to-food []
 
-    while [not empty? queue and not found-food]
-    [
+    while [not empty? queue and not found-food] [
       let path item 0 queue
-      set current-node last path
       set queue butfirst queue
-
-      let current-neighbors []
-      ask current-node[
-        set current-neighbors sort neighbors4
-      ]
-
-      let free-neighbors filter [n -> member? [pcolor] of n clear-colors] current-neighbors
-      let unvisited-neighbors filter [n -> member? n visited = false] free-neighbors
-
-      foreach unvisited-neighbors
-      [ neighbor ->
-        let new-path lput neighbor path
-
-        ifelse [pcolor] of neighbor = green [
-          set path-to-food butfirst new-path
-          set found-food true
-        ]
-        [
-          set queue lput new-path queue
-          set visited lput neighbor visited
+      foreach open-neighbors last path [ neighbor ->
+        if not found-food [
+          let new-path lput neighbor path
+          ifelse [pcolor] of neighbor = green [
+            set path-to-food butfirst new-path
+            set found-food true
+          ] [
+            mark-visited neighbor
+            set queue lput new-path queue
+            set visited lput neighbor visited
+          ]
         ]
       ]
     ]
     if debug-paths [color-path visited] ;function to color the future path of snake
   ]
-
-  face (item 0 path-to-food)
-  set path-to-food butfirst path-to-food
+  follow-path
 end
 
 ;;--------------------------------------------
 
-;;;
-; Face the turtle according to the greedy search algorithm
+; Greedy, uniform and A* share one search. Queue entries are (list stored-score path),
+; kept in order; `mode` picks how a new path is scored:
+;   greedy:  distance from the path's last patch to the nearest apple
+;   uniform: the sum of those distances along the whole path
+;   A*:      inserted by (sum along the path + distance from its last patch),
+;            stored with the path's sum (as in the original)
 to face-greedy
-  let next-blocked false ;This block allows the snake to recalculate the route to avoid players which may have since moved to block them
-  if avoid-snakes [set next-blocked will-collide]
-  let queue []
-  let visited []
-  if empty? path-to-food or next-blocked
-  [
-    let current-node patch-here
-    set queue lput (list current-node) []
-    set visited lput current-node []
-    let found-food false
-
-    while [not found-food]
-    [
-      let path item 0 queue
-      set current-node last path
-      set queue butfirst queue
-      let current-neighbors []
-      ask current-node[
-        set current-neighbors sort neighbors4
-      ]
-
-      let free-neighbors filter [n -> member? [pcolor] of n clear-colors] current-neighbors
-      let unvisited-neighbors filter [n -> member? n visited = false] free-neighbors
-
-      let new-paths []
-      foreach unvisited-neighbors
-      [ neighbor ->
-        let new-path lput neighbor path
-
-        ifelse [pcolor] of neighbor = green [
-          set path-to-food butfirst new-path
-          set found-food true
-        ]
-        [
-          set visited lput neighbor visited
-          ;Insert the new-path into the queue (based on the leaf node's score of the branches)
-          set queue insert-into-queue-by-node new-path queue
-        ]
-      ]
-    ]
-    if debug-paths [color-path visited];function to color the future path of snake
-  ]
-
-
-  face (item 0 path-to-food)
-  set path-to-food butfirst path-to-food
+  informed-search "greedy"
 end
 
-to-report insert-into-queue-by-node [new-path queue]
-  ; Calculate the score of the new path
-  let new-score get-node-score last new-path
-  ; If the queue is empty or the new score is greater than the score of the last item in the queue, append the new path
-  ifelse empty? queue or new-score > get-node-score last last queue [
-    set queue lput new-path queue
-  ] [
-    ; Otherwise, find the correct index to insert the new path
-    let index 0
-    let found false
-    while [index < length queue and not found] [
-      ifelse new-score <= get-node-score last item index queue [
-        set found true
-      ] [
-        set index index + 1
-      ]
-    ]
-    ; Insert the new path at the appropriate index
-    set queue insert-item index queue new-path
-  ]
-  report queue
-end
-
-to-report get-node-score [node];informed search, returns a score based on the distance to the nearest apple
-  let closest-apple-distance 10000; Initialize closest-distance to a large value
-  let node-x 0
-  let node-y 0
-  let apple-x 0
-  let apple-y 0
-
-  ask node [
-    set node-x pxcor
-    set node-y pycor
-  ]
-
-  set apples filter [n -> [pcolor] of n = green] apples
-
-  foreach apples [apple ->
-    let distance-to-apple 1
-    ask apple [
-      if [pcolor] of apple = green ;This code is vital or it will detect an already eaten apple
-      [
-        set apple-x pxcor
-        set apple-y pycor
-      ]
-    ]
-
-    set distance-to-apple (abs (node-x - apple-x)) + (abs (node-y - apple-y)) ;Calculates the Manhattan distance
-
-    if (distance-to-apple < closest-apple-distance )
-    [
-      set closest-apple-distance distance-to-apple
-    ]
-  ]
-  report closest-apple-distance
-end
-
-;;--------------------------------------------
-
-;;;
-; Face the turtle according to the uniform search algorithm
 to face-uniform
-  let next-blocked false ;This block allows the snake to recalculate the route to avoid players which may have since moved to block them
-  if avoid-snakes [set next-blocked will-collide]
-  let queue []
-  let visited []
-  if empty? path-to-food or next-blocked
-  [
-    let current-node patch-here
-    set queue lput (list current-node) []
-    set visited lput current-node []
-    let found-food false
-
-    while [not found-food]
-    [
-      let path item 0 queue
-      set current-node last path
-      set queue butfirst queue
-      let current-neighbors []
-      ask current-node[
-        set current-neighbors sort neighbors4
-      ]
-
-      let free-neighbors filter [n -> member? [pcolor] of n clear-colors] current-neighbors
-      let unvisited-neighbors filter [n -> member? n visited = false] free-neighbors
-
-      let new-paths []
-      foreach unvisited-neighbors
-      [ neighbor ->
-        let new-path lput neighbor path
-
-        ifelse [pcolor] of neighbor = green [
-          set path-to-food butfirst new-path
-          set found-food true
-        ]
-        [
-          set visited lput neighbor visited
-          ;Insert the new-path into the queue (based on the total node score of the branches)
-          set queue insert-into-queue-by-branch new-path queue
-        ]
-      ]
-    ]
-    if debug-paths [color-path visited];function to color the future path of snake
-  ]
-
-  face (item 0 path-to-food)
-  set path-to-food butfirst path-to-food
+  informed-search "uniform"
 end
 
-to-report insert-into-queue-by-branch [new-path queue]
-  ; Calculate the score of the new path
-  let new-score get-node-branch-score new-path
-  ; If the queue is empty or the new score is greater than the score of the last item in the queue, append the new path
-  ifelse empty? queue or new-score > get-node-branch-score last queue [
-    set queue lput new-path queue
-  ] [
-    ; Otherwise, find the correct index to insert the new path
-    let index 0
-    let found false
-    while [index < length queue and not found] [
-      ifelse new-score <= get-node-branch-score item index queue [
-        set found true
-      ] [
-        set index index + 1
-      ]
-    ]
-    ; Insert the new path at the appropriate index
-    set queue insert-item index queue new-path
-  ]
-  report queue
-end
-
-to-report get-node-branch-score [node-branch];informed search, returns a score based on the distance to the nearest apple
-  let node-scores map get-node-score node-branch
-  let total 0
-  foreach node-scores [score -> set total total + score]
-  report total
-end
-;;--------------------------------------------
-
-;;;
-; Face the turtle according to the A* search algorithm
 to face-A*
-  let next-blocked false ;This block allows the snake to recalculate the route to avoid players which may have since moved to block them
-  if avoid-snakes [set next-blocked will-collide]
-  let queue []
-  let visited []
-  if empty? path-to-food or next-blocked
-  [
+  informed-search "A*"
+end
+
+to informed-search [kind] ; turtle
+  if needs-new-path [
     let current-node patch-here
-    set queue lput (list current-node) []
-    set visited lput current-node []
+    start-search current-node
+    let start-score get-node-score current-node
+    let queue (list (list start-score (list current-node)))
+    let visited (list current-node)
     let found-food false
+    set path-to-food []
 
-    while [not found-food]
-    [
-      let path item 0 queue
-      set current-node last path
+    while [not found-food and not empty? queue] [
+      let entry item 0 queue
       set queue butfirst queue
-      let current-neighbors []
-      ask current-node[
-        set current-neighbors sort neighbors4
-      ]
+      let path item 1 entry
+      let branch item 0 entry
 
-      let free-neighbors filter [n -> member? [pcolor] of n clear-colors] current-neighbors
-      let unvisited-neighbors filter [n -> member? n visited = false] free-neighbors
-
-      let new-paths []
-      foreach unvisited-neighbors
-      [ neighbor ->
-        let new-path lput neighbor path
-
-        ifelse [pcolor] of neighbor = green [
-          set path-to-food butfirst new-path
-          set found-food true
-        ]
-        [
-          set visited lput neighbor visited
-          ;Insert the new-path into the queue (based on the branch and leaf node's score of the branches)
-          set queue insert-into-queue-by-branch-and-node new-path queue
+      foreach open-neighbors last path [ neighbor ->
+        if not found-food [
+          let new-path lput neighbor path
+          ifelse [pcolor] of neighbor = green [
+            set path-to-food butfirst new-path
+            set found-food true
+          ] [
+            mark-visited neighbor
+            set visited lput neighbor visited
+            let node-score get-node-score neighbor
+            (ifelse
+              kind = "greedy" [ set queue insert-by-score (list node-score new-path) node-score queue ]
+              kind = "uniform" [ set queue insert-by-score (list (branch + node-score) new-path) (branch + node-score) queue ]
+              [ set queue insert-by-score (list (branch + node-score) new-path) (branch + node-score + node-score) queue ])
+          ]
         ]
       ]
     ]
     if debug-paths [color-path visited];function to color the future path of snake
   ]
-
-  face (item 0 path-to-food)
-  set path-to-food butfirst path-to-food
+  follow-path
 end
 
-to-report insert-into-queue-by-branch-and-node [new-path queue]
-  ; Calculate the score of the new path
-  let branch-score get-node-branch-score new-path
-  let node-score get-node-score last new-path
+; Insert an entry before the first queue entry whose stored score is >= new-score
+to-report insert-by-score [entry new-score queue]
+  if empty? queue or new-score > item 0 last queue [ report lput entry queue ]
+  let index 0
+  while [index < length queue and new-score > item 0 item index queue] [ set index index + 1 ]
+  report insert-item index queue entry
+end
 
-  let new-score branch-score + node-score
-
-  ; If the queue is empty or the new score is greater than the score of the last item in the queue, append the new path
-  ifelse empty? queue or new-score > get-node-branch-score last queue [
-    set queue lput new-path queue
-  ] [
-    ; Otherwise, find the correct index to insert the new path
-    let index 0
-    let found false
-    while [index < length queue and not found] [
-      ifelse new-score <= get-node-branch-score item index queue [
-        set found true
-      ] [
-        set index index + 1
-      ]
-    ]
-    ; Insert the new path at the appropriate index
-    set queue insert-item index queue new-path
-  ]
-  report queue
+to-report get-node-score [node];informed search, returns the Manhattan distance to the nearest apple
+  if empty? apples [ report 10000 ]
+  let node-x [pxcor] of node
+  let node-y [pycor] of node
+  report min map [a -> abs (node-x - [pxcor] of a) + abs (node-y - [pycor] of a)] apples
 end
 
 ;;--------------------------------------------
