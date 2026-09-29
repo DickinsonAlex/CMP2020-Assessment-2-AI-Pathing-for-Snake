@@ -154,7 +154,8 @@ to go ; observer
     fd 1
 
     ; 3. check for a collision (and thus game lost)
-    if not member? pcolor clear-colors and not highscore-mode[
+    ; highscore mode only ignores the max age: crashing still ends the game
+    if not member? pcolor clear-colors [
       set loser self
       stop
     ]

@@ -25,6 +25,7 @@ The web version also fixes a few problems that showed up in the browser:
 - **Depth-first search** now backtracks properly. The original could plan a path that jumped to a patch that wasn't next to the snake (so it crashed), or loop forever when it boxed itself in.
 - **No more freezing:** "visited" is a mark on each patch instead of a search through a list, and path scores are stored in the queue instead of being recalculated on every comparison. The slowest tick went from about 3 seconds to under 0.1 s.
 - **Unreachable food** no longer breaks the greedy, uniform and A* searches (they used to run off the end of an empty queue).
+- **Highscore mode no longer drives through walls.** It only ignores the max age now; crashing still ends the game (and shows the length reached). This is fixed in `SnakeAI.nlogo` too.
 - **A safety check** before every move: the snake only follows its plan onto a clear patch next to it; otherwise it drops the plan and steps somewhere safe.
 
 ### Rebuilding and deploying the web version

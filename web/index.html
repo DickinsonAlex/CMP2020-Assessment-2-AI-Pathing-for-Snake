@@ -8388,7 +8388,9 @@ to go ; observer
     fd 1
 
     ; 3. check for a collision (and thus game lost)
-    if not member? pcolor clear-colors and not highscore-mode[
+    ; (highscore mode only ignores the max age: crashing still ends the game, otherwise
+    ;  the snake would drive through walls and erase them)
+    if not member? pcolor clear-colors [
       set loser self
       stop
     ]
@@ -8421,7 +8423,11 @@ to go ; observer
 
   ; A collision has happened: show message and stop the game
   (ifelse loser != nobody [
-    user-message (word "Game Over! Team " [team] of loser " lost")
+    ifelse highscore-mode [
+      user-message (word "Game Over! Team " [team] of loser " crashed at length " [snake-age] of loser)
+    ] [
+      user-message (word "Game Over! Team " [team] of loser " lost")
+    ]
     stop
   ] winner != nobody [
     user-message (word "Game Over! Team " [team] of winner " won!")
